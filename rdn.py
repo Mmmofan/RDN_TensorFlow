@@ -5,7 +5,7 @@ import numpy as np
 import config as cfg
 
 class rdn(object):
-    def __init__(self, is_train=True):
+    def __init__(self, is_train, scale):
         self.is_train = is_train
         self.weights= {}
         self.biases = {}
@@ -170,5 +170,5 @@ class rdn(object):
         return loss
 
 if __name__ == "__main__":
-    net = rdn(True)
+    net = rdn(True, 2)
     print("Done")
