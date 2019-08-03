@@ -10,34 +10,25 @@ class rdn(object):
         self.weights= {}
         self.biases = {}
 
-        image_size = cfg.IMAGE_SIZE
-        label_size = cfg.LABEL_SIZE
-        self.channel = cfg.CHANNEL
-        scale = cfg.SCALE
+        self.c_dim = cfg.CHANNEL
+        self.scale = cfg.SCALE
         
         self.D  = cfg.D
         self.C  = cfg.C
         self.G  = cfg.G
         self.G0 = cfg.G0
 
-        self.init_param(scale)
-        self.input_ = tf.placeholder(tf.float32, [None, image_size, image_size, self.channel], name='input')
+        self.init_param(self.scale)
         self.batch  = tf.placeholder(tf.int8, [], name='batch')
-        self.label_ = tf.placeholder(tf.float32, [None, label_size, label_size, self.channel], name='label')
-        self.output = self.build_net(self.input_, scale)
-
-        if is_train:
-            self.loss = self.loss_layer(self.output, self.label_)
-        print("RDN net build...")
         
     def init_param(self, scale):
         D = self.D
         C = self.C
         G = self.G
         G0 = self.G0
-        channel = self.channel
+        c_dim = self.c_dim
         # param for sfe
-        self.weights['w1'] = tf.Variable(tf.random_normal([3, 3, channel, G0], stddev=0.01), name='w1')
+        self.weights['w1'] = tf.Variable(tf.random_normal([3, 3,c_dim, G0], stddev=0.01), name='w1')
         self.biases['b1'] = tf.Variable(tf.zeros([G0]), name='b1')
         self.weights['w2'] = tf.Variable(tf.random_normal([3, 3, G0, G], stddev=0.01), name='w2')
         self.biases['b2'] = tf.Variable(tf.zeros([G]), name='b2')
@@ -58,13 +49,29 @@ class rdn(object):
         self.biases['b{}'.format(D+5)] = tf.Variable(tf.zeros([64]), name='b{}'.format(D+5))
         self.weights['w{}'.format(D+6)] = tf.Variable(tf.random_normal([3, 3, 64, 32], stddev=0.01), name='w{}'.format(D+6))
         self.biases['b{}'.format(D+6)] = tf.Variable(tf.zeros([32]), name='b{}'.format(D+6))
-        self.weights['w{}'.format(D+7)] = tf.Variable(tf.random_normal([3, 3, 32, channel*scale*scale], stddev=np.sqrt(2/9/32)), name='w{}'.format(D+7))
-        self.biases['b{}'.format(D+7)] = tf.Variable(tf.zeros([channel*scale*scale]), name='b{}'.format(D+7))
-        self.weights['w{}'.format(D+8)] = tf.Variable(tf.random_normal([3, 3, channel, channel], stddev=np.sqrt(2/9/32)), name='w{}'.format(D+8))
-        self.biases['b{}'.format(D+8)] = tf.Variable(tf.zeros([channel]), name='b{}'.format(D+8))
+        self.weights['w{}'.format(D+7)] = tf.Variable(tf.random_normal([3, 3, 32, c_dim*scale*scale], stddev=np.sqrt(2/9/32)), name='w{}'.format(D+7))
+        self.biases['b{}'.format(D+7)] = tf.Variable(tf.zeros([c_dim*scale*scale]), name='b{}'.format(D+7))
+        self.weights['w{}'.format(D+8)] = tf.Variable(tf.random_normal([3, 3, c_dim, c_dim], stddev=np.sqrt(2/9/32)), name='w{}'.format(D+8))
+        self.biases['b{}'.format(D+8)] = tf.Variable(tf.zeros([c_dim]), name='b{}'.format(D+8))
 
-    def build_net(self, input_tensor, scale):
-        # SFE
+    def build_net(self, input_size):
+        """
+        input_size: [image_size, image_size], the size of input image, for training is 32, for testing is arbitrarily
+        """
+        c_dim = self.c_dim
+        scale = self.scale
+        self.input_ = tf.placeholder(tf.float32, [None, input_size[0], input_size[1], c_dim], name='input')       
+        self.label_ = tf.placeholder(tf.float32, [None, input_size[0]*scale, input_size[1]*scale, c_dim], name='label')
+        self.output = self.model(self.input_)
+        if self.is_train:
+            self.loss = self.loss_layer(self.output, self.label_)
+        print("RDN net build...")
+
+    def model(self, input_tensor):
+        """
+        Build model from input_tensor
+        """
+        scale = self.scale
         x_pass, x_1 = self.sfenet(input_tensor)
         x_2 = self.rdn_block(x_1)
         x_3 = self.dff(x_2, x_pass)
@@ -170,5 +177,7 @@ class rdn(object):
         return loss
 
 if __name__ == "__main__":
+    image_size = [32, 32]
     net = rdn(True, 2)
+    net.build_net(image_size)
     print("Done")
