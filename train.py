@@ -7,6 +7,7 @@ import h5py
 from rdn import rdn
 from data import Data
 import config as cfg
+from calculate import calculate_metrics
 
 class Recover(object):
     def __init__(self, net, data, scale, args):
@@ -32,10 +33,31 @@ class Recover(object):
         # build rdn net
         self.net.build_net([self.image_size, self.image_size])
         self.optimizer = tf.train.AdamOptimizer(self.learning_rate)
+        self.gradients = self.optimizer.compute_gradients(self.net.loss, tf.trainable_variables())
         self.train_op = self.optimizer.minimize(self.net.loss, global_step=self.global_step)
 
-        self.epochs = cfg.EPOCHS
-        self.sess = tf.Session()
+        with tf.name_scope('performance'):
+            self.tf_loss_ph = tf.placeholder(tf.float32, [], name='loss_ph')
+            self.tf_psnr_ph = tf.placeholder(tf.float32, [], name='psnr_ph')
+            self.tf_ssim_ph = tf.placeholder(tf.float32, [], name='ssim_ph')
+            tf_loss_summary = tf.summary.scalar('loss', self.tf_loss_ph)
+            tf_psnr_summary = tf.summary.scalar('psnr', self.tf_psnr_ph)
+            tf_ssim_summary = tf.summary.scalar('ssim', self.tf_ssim_ph)
+        self.performance_summary = tf.summary.merge([tf_loss_summary, tf_psnr_summary, tf_ssim_summary])
+
+        with tf.name_scope('grads_and_learning_rate'):
+            self.lr_ph = tf.placeholder(tf.float32, [], name='lr_ph')
+            last_grads = self.gradients[-2][0]  # last layer's weights
+            self.last_grads_norm = tf.sqrt(tf.reduce_mean(last_grads**2))
+            tf_lr_summary = tf.summary.scalar('learning_rate', self.lr_ph)
+            tf_grads_summary = tf.summary.scalar('grads_norm', self.last_grads_norm)
+        self.grads_and_lr = tf.summary.merge([tf_grads_summary, tf_lr_summary])
+
+        config = tf.ConfigProto(allow_soft_placement=True)
+        config.gpu_options.allow_growth = True
+        config.gpu_options.per_process_gpu_memory_fraction = 0.8
+        self.sess = tf.Session(config=config)
+        self.writer = tf.summary.FileWriter(self.event_dir, self.sess.graph)
         self.sess.run(tf.global_variables_initializer())
         if not args.fresh:
             self.restorer = tf.train.Saver(variables_to_restore, max_to_keep=2)
@@ -59,14 +81,29 @@ class Recover(object):
                 feed_dict = {self.net.input_: input_, self.net.label_: label_, self.net.batch:batch}
                 _, err = self.sess.run([self.train_op, self.net.loss], feed_dict=feed_dict)
                 # print every 100 steps
-                if step % 20 == 0:
+                if step % 100 == 0:
                     print("Training step: [{}], time: [{}min], loss: [{}]".format(\
                         step+epo*steps, (time.time()-overall_time)/60, err))
+                if step % 200 == 0:
+                    self.test(input_, label_, self.learning_rate, step+epo*steps)
                 # save ckpt every 500 steps:
-                if step % 40 == 0:
+                if step % 500 == 0:
                     self.saver.save(self.sess, self.weight_file, global_step=self.global_step)
         print("Done...")
         hf.close()
+
+    def test(self, input_, label_, lr, step):
+        output, loss, gn_summ = self.sess.run([self.net.output, self.net.loss, self.grads_and_lr], 
+                                       feed_dict={self.net.input_: input_, 
+                                                  self.net.label_: label_, 
+                                                  self.lr_ph: self.learning_rate})
+        self.writer.add_summary(gn_summ, step)
+        psnr, ssim = calculate_metrics(label_, output)
+        summ = self.sess.run(self.performance_summary, feed_dict={self.tf_loss_ph: loss, self.tf_psnr_ph: psnr, self.tf_ssim_ph: ssim})
+        self.writer.add_summary(summ, step)
+
+    def __del__(self):
+        self.sess.close()
 
 
 if __name__ == "__main__":

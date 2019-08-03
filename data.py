@@ -40,6 +40,16 @@ class Data(object):
                                                  y * stride : y * stride + self.image_size, :]
                             label_patch = label_[x * stride * scale : x * stride * scale + self.label_size,
                                                  y * stride * scale : y * stride * scale + self.label_size, :]
+                            # make sure the patch has enough edge for good training, reference: https://github.com/hengchuan/RDN-TensorFlow/blob/master/utils.py
+                            t = cv2.cvtColor(label_patch, cv2.COLOR_BGR2YCR_CB)
+                            t = t[:, :, 0] # y
+                            gx = t[1:, 0:-1] - t[0:-1, 0:-1]
+                            gy = t[0:-1, 1:] - t[0:-1, 0:-1]
+                            Gxy = (gx**2 + gy**2)**0.5
+                            r_gxy = float((Gxy>10).sum()) / ((self.image_size*scale)**2) * 100
+                            if r_gxy < 10:
+                                continue
+
                             input_seq.append(input_patch)
                             label_seq.append(label_patch)
                 make_data(input_seq, label_seq, self.dataset,self.scale)
@@ -57,6 +67,15 @@ class Data(object):
                                              y * stride : y * stride + self.image_size, :]
                         label_patch = label_[x * stride * scale : x * stride * scale + self.label_size,
                                              y * stride * scale : y * stride * scale + self.label_size, :]
+                        t = cv2.cvtColor(label_patch, cv2.COLOR_BGR2YCR_CB)
+                        t = t[:, :, 0] # y
+                        gx = t[1:, 0:-1] - t[0:-1, 0:-1]
+                        gy = t[0:-1, 1:] - t[0:-1, 0:-1]
+                        Gxy = (gx**2 + gy**2)**0.5
+                        r_gxy = float((Gxy>10).sum()) / ((self.image_size*scale)**2) * 100
+                        if r_gxy < 10:
+                            continue
+
                         input_seq.append(input_patch)
                         label_seq.append(label_patch)
             make_data(input_seq, label_seq, self.dataset, self.scale)
