@@ -8,3 +8,5 @@ checkpoint
 *.ckpt*
 *.ini
 *.h5
+
+events.*

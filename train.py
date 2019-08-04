@@ -18,8 +18,9 @@ class Recover(object):
         self.epochs = cfg.EPOCHS
         self.batch = cfg.BATCH
 
-        self.learning_rate = cfg.L_R
         self.global_step = tf.Variable(0, trainable=False, name='global_step')
+        self.learning_rate = tf.train.exponential_decay(cfg.L_R, 
+                            global_step=self.global_step, decay_steps=200000, decay_rate=0.5, staircase=True, name='Learning_rate')
 
         variables_to_save = tf.global_variables()
         variables_to_restore = tf.global_variables()
@@ -74,21 +75,23 @@ class Recover(object):
         data_len = len(hf['data'])
         assert(len(hf['data']) == len(hf['label']))
         steps = data_len // batch
+        print("[{}] steps per epoch...".format(steps))
 
         for epo in range(epochs):
             for step in range(1, steps+1):
                 input_, label_ = hf['data'][step*batch : (step+1)*batch], hf['label'][step*batch : (step+1)*batch]
                 feed_dict = {self.net.input_: input_, self.net.label_: label_, self.net.batch:batch}
-                _, err = self.sess.run([self.train_op, self.net.loss], feed_dict=feed_dict)
+                _, err, lr = self.sess.run([self.train_op, self.net.loss, self.learning_rate], feed_dict=feed_dict)
                 # print every 100 steps
                 if step % 100 == 0:
-                    print("Training step: [{}], time: [{}min], loss: [{}]".format(\
+                    print("Training step: [{:6}], time: [{:.6f}min], loss: [{:.6f}]".format(\
                         step+epo*steps, (time.time()-overall_time)/60, err))
                 if step % 200 == 0:
-                    self.test(input_, label_, self.learning_rate, step+epo*steps)
+                    self.test(input_, label_, lr, step+epo*steps)
                 # save ckpt every 500 steps:
                 if step % 500 == 0:
                     self.saver.save(self.sess, self.weight_file, global_step=self.global_step)
+            print("===================Epoch: [{:3}]===================".format(epo))
         print("Done...")
         hf.close()
 
@@ -96,7 +99,7 @@ class Recover(object):
         output, loss, gn_summ = self.sess.run([self.net.output, self.net.loss, self.grads_and_lr], 
                                        feed_dict={self.net.input_: input_, 
                                                   self.net.label_: label_, 
-                                                  self.lr_ph: self.learning_rate})
+                                                  self.lr_ph: lr})
         self.writer.add_summary(gn_summ, step)
         psnr, ssim = calculate_metrics(label_, output)
         summ = self.sess.run(self.performance_summary, feed_dict={self.tf_loss_ph: loss, self.tf_psnr_ph: psnr, self.tf_ssim_ph: ssim})
@@ -108,7 +111,7 @@ class Recover(object):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', default='Set14', type=str)
+    parser.add_argument('--dataset', default='DIV2K_train_HR', type=str)
     parser.add_argument('--image_form', default='.png', type=str)
     parser.add_argument('--fresh', default=True, type=bool)
     parser.add_argument('--weight_file', default='rdn.ckpt', type=str)
@@ -131,5 +134,5 @@ if __name__ == "__main__":
     data = Data(args.dataset, args.image_form, scale)
 
     recover = Recover(net, data, scale, args)
-    print("Start training...\n")
+    print("Start training...")
     recover.train()

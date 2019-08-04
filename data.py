@@ -23,15 +23,15 @@ class Data(object):
         print("No training file, making h5 file for training...")
         scale = self.scale
         stride = self.stride
-        self.data = prepare_data(os.path.join(self.data_dir, self.dataset+os.path.sep+'image_SRF_2'), self.image_form)
+        self.data = prepare_data(os.path.join(self.data_dir, self.dataset), self.image_form)
         if len(self.data) >= 100:  # in case the data is too large
             group = len(self.data) // 50
             for gp in range(group):
-                data_list = self.data[group * 50 : (group+1) * 50]
+                data_list = self.data[gp * 50 : (gp+1) * 50]
                 input_seq, label_seq = [], []
                 for data in data_list:
                     input_, label_ = preprocess(data, scale)
-                    (height, width) = input_.shape
+                    (height, width, _) = input_.shape
                     x_range = (height - self.image_size) // stride
                     y_range = (width - self.image_size) // stride
                     for x in range(x_range):
@@ -40,11 +40,12 @@ class Data(object):
                                                  y * stride : y * stride + self.image_size, :]
                             label_patch = label_[x * stride * scale : x * stride * scale + self.label_size,
                                                  y * stride * scale : y * stride * scale + self.label_size, :]
-                            # make sure the patch has enough edge for good training, reference: https://github.com/hengchuan/RDN-TensorFlow/blob/master/utils.py
+                            # make sure the patch has enough edge for good training 
+                            # reference: https://github.com/hengchuan/RDN-TensorFlow/blob/master/utils.py
                             t = cv2.cvtColor(label_patch, cv2.COLOR_BGR2YCR_CB)
                             t = t[:, :, 0] # y
-                            gx = t[1:, 0:-1] - t[0:-1, 0:-1]
-                            gy = t[0:-1, 1:] - t[0:-1, 0:-1]
+                            gx = (t[1:, 0:-1] - t[0:-1, 0:-1]) * 255
+                            gy = (t[0:-1, 1:] - t[0:-1, 0:-1]) * 255
                             Gxy = (gx**2 + gy**2)**0.5
                             r_gxy = float((Gxy>10).sum()) / ((self.image_size*scale)**2) * 100
                             if r_gxy < 10:
@@ -53,7 +54,7 @@ class Data(object):
                             input_seq.append(input_patch)
                             label_seq.append(label_patch)
                 make_data(input_seq, label_seq, self.dataset,self.scale)
-                print('Made {}th data group'.format(gp))
+                print('Made {}th/{} data group'.format(gp+1, group))
         else:
             input_seq, label_seq = [], []
             for data in self.data:
@@ -90,7 +91,7 @@ def prepare_data(dataset, image_form):
     """
     if not os.path.exists(dataset):
         raise Exception("No such dataset")
-    data_files = glob.glob(os.path.join(dataset, '*_HR'+image_form))
+    data_files = glob.glob(os.path.join(dataset, '*'+image_form))
     return data_files
 
 def preprocess(path, scale):
@@ -123,11 +124,11 @@ def make_data(data, label, dataset, scale):
     else:
         with h5py.File(save_path, 'a') as hf:
             len1 = hf['data'].shape[0]
-            len2 = data.shape[0]
+            len2 = len(data)
             hf['data'].resize((len1 + len2), axis=0)
             hf['data'][-len2:] = data
             len3 = hf['label'].shape[0]
-            len4 = label.shape[0]
+            len4 = len(label)
             hf['label'].resize((len3+len4), axis=0)
             hf['label'][-len4:] = label
 
