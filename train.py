@@ -20,7 +20,7 @@ class Recover(object):
 
         self.global_step = tf.Variable(0, trainable=False, name='global_step')
         self.learning_rate = tf.train.exponential_decay(cfg.L_R, 
-                            global_step=self.global_step, decay_steps=200000, decay_rate=0.5, staircase=True, name='Learning_rate')
+                            global_step=self.global_step, decay_steps=200000, decay_rate=0.5, staircase=True)
 
         variables_to_save = tf.global_variables()
         variables_to_restore = tf.global_variables()
@@ -47,10 +47,9 @@ class Recover(object):
         self.performance_summary = tf.summary.merge([tf_loss_summary, tf_psnr_summary, tf_ssim_summary])
 
         with tf.name_scope('grads_and_learning_rate'):
-            self.lr_ph = tf.placeholder(tf.float32, [], name='lr_ph')
             last_grads = self.gradients[-2][0]  # last layer's weights
             self.last_grads_norm = tf.sqrt(tf.reduce_mean(last_grads**2))
-            tf_lr_summary = tf.summary.scalar('learning_rate', self.lr_ph)
+            tf_lr_summary = tf.summary.scalar('learning_rate', self.learning_rate)
             tf_grads_summary = tf.summary.scalar('grads_norm', self.last_grads_norm)
         self.grads_and_lr = tf.summary.merge([tf_grads_summary, tf_lr_summary])
 
@@ -73,6 +72,7 @@ class Recover(object):
 
         hf = h5py.File(self.cache_file, 'r')
         data_len = len(hf['data'])
+        counter = 0
         assert(len(hf['data']) == len(hf['label']))
         steps = data_len // batch
         print("[{}] steps per epoch...".format(steps))
@@ -81,27 +81,30 @@ class Recover(object):
             for step in range(1, steps+1):
                 input_, label_ = hf['data'][step*batch : (step+1)*batch], hf['label'][step*batch : (step+1)*batch]
                 feed_dict = {self.net.input_: input_, self.net.label_: label_, self.net.batch:batch}
-                _, err, lr = self.sess.run([self.train_op, self.net.loss, self.learning_rate], feed_dict=feed_dict)
+                _, err = self.sess.run([self.train_op, self.net.loss], feed_dict=feed_dict)
+                counter += 1
                 # print every 100 steps
-                if step % 100 == 0:
-                    print("Training step: [{:6}], time: [{:.6f}min], loss: [{:.6f}]".format(\
+                if counter % 100 == 0:
+                    print("Training step: [{:6}], time: [{:4.6f}min], loss: [{:.6f}]".format(\
                         step+epo*steps, (time.time()-overall_time)/60, err))
-                if step % 200 == 0:
-                    self.test(input_, label_, lr, step+epo*steps)
+                if counter % 200 == 0:
+                    self.test(input_, label_, counter)
                 # save ckpt every 500 steps:
-                if step % 500 == 0:
+                if counter % 500 == 0:
+                    gn_summ = self.sess.run(self.grads_and_lr, feed_dict={self.net.input_: input_, self.net.label_: label_})
+                    self.writer.add_summary(gn_summ, counter)
                     self.saver.save(self.sess, self.weight_file, global_step=self.global_step)
             print("===================Epoch: [{:3}]===================".format(epo))
         print("Done...")
         hf.close()
 
-    def test(self, input_, label_, lr, step):
-        output, loss, gn_summ = self.sess.run([self.net.output, self.net.loss, self.grads_and_lr], 
-                                       feed_dict={self.net.input_: input_, 
-                                                  self.net.label_: label_, 
-                                                  self.lr_ph: lr})
-        self.writer.add_summary(gn_summ, step)
-        psnr, ssim = calculate_metrics(label_, output)
+    def test(self, input_, label_, step):
+        output, loss = self.sess.run([self.net.output, self.net.loss], feed_dict={self.net.input_: input_, self.net.label_: label_})
+        metrics, metrics2 = [], []
+        for i in range(output.shape[0]):
+            psnr, ssim = calculate_metrics(label_[i], output[i])
+            metrics.append(psnr)
+            metrics2.append(ssim)
         summ = self.sess.run(self.performance_summary, feed_dict={self.tf_loss_ph: loss, self.tf_psnr_ph: psnr, self.tf_ssim_ph: ssim})
         self.writer.add_summary(summ, step)
 
