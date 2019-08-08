@@ -7,9 +7,10 @@ import h5py
 from rdn import rdn
 from data import Data
 import config as cfg
+import skimage.color as sc
 from calculate import calculate_metrics
 
-class Recover(object):
+class Trainer(object):
     def __init__(self, net, data, scale, args):
         self.net = net
         self.data = data
@@ -17,6 +18,7 @@ class Recover(object):
         self.image_size = cfg.IMAGE_SIZE
         self.epochs = cfg.EPOCHS
         self.batch = cfg.BATCH
+        self.hf = None
 
         self.global_step = tf.Variable(0, trainable=False, name='global_step')
         self.learning_rate = tf.train.exponential_decay(cfg.L_R, 
@@ -32,7 +34,7 @@ class Recover(object):
         self.cache_file = os.path.join(self.cache_dir, self.cache_name)
 
         # build rdn net
-        self.net.build_net([self.image_size, self.image_size])
+        self.net.build_net()
         self.optimizer = tf.train.AdamOptimizer(self.learning_rate)
         self.gradients = self.optimizer.compute_gradients(self.net.loss, tf.trainable_variables())
         self.train_op = self.optimizer.minimize(self.net.loss, global_step=self.global_step)
@@ -70,7 +72,7 @@ class Recover(object):
         if not os.path.exists(self.cache_file):
             self.data.train_setup()
 
-        hf = h5py.File(self.cache_file, 'r')
+        self.hf = h5py.File(self.cache_file, 'r')
         data_len = len(hf['data'])
         counter = 0
         assert(len(hf['data']) == len(hf['label']))
@@ -78,8 +80,14 @@ class Recover(object):
         print("[{}] steps per epoch...".format(steps))
 
         for epo in range(epochs):
-            for step in range(1, steps+1):
-                input_, label_ = hf['data'][step*batch : (step+1)*batch], hf['label'][step*batch : (step+1)*batch]
+            for step in range(steps):
+                # random choose a batch
+                rand_batch = np.random.randint(data_len - 1)
+                input_, label_ = hf['data'][rand_batch * batch : (rand_batch+1) * batch], \
+                                 hf['label'][rand_batch * batch : (rand_batch+1) * batch]
+                # add data augumentation
+                random_aug = np.random.rand(2)
+                input_, label_ = self.data.augument(input_, label_)
                 feed_dict = {self.net.input_: input_, self.net.label_: label_, self.net.batch:batch}
                 _, err = self.sess.run([self.train_op, self.net.loss], feed_dict=feed_dict)
                 counter += 1
@@ -96,20 +104,28 @@ class Recover(object):
                     self.saver.save(self.sess, self.weight_file, global_step=self.global_step)
             print("===================Epoch: [{:3}]===================".format(epo))
         print("Done...")
-        hf.close()
 
     def test(self, input_, label_, step):
         output, loss = self.sess.run([self.net.output, self.net.loss], feed_dict={self.net.input_: input_, self.net.label_: label_})
         metrics, metrics2 = [], []
         for i in range(output.shape[0]):
+            label_ = (label_ * 255).astype(np.uint8)
+            output = (output * 255).astype(np.uint8)
+
+            label_ycbcr = sc.rgb2ycbcr(label_)
+            output_ycbcr = sc.rgb2ycbcr(output)
             psnr, ssim = calculate_metrics(label_[i], output[i])
             metrics.append(psnr)
             metrics2.append(ssim)
-        summ = self.sess.run(self.performance_summary, feed_dict={self.tf_loss_ph: loss, self.tf_psnr_ph: psnr, self.tf_ssim_ph: ssim})
+        avg_psnr = sum([m for m in metrics]) / len(metrics)
+        avg_ssim = sum([m for m in metrics2]) / len(metrics2)
+        feed_dict={self.tf_loss_ph: loss, self.tf_psnr_ph: avg_psnr, self.tf_ssim_ph: avg_ssim}
+        summ = self.sess.run(self.performance_summary, feed_dict=feed_dict)
         self.writer.add_summary(summ, step)
 
     def __del__(self):
         self.sess.close()
+        self.hf.close()
 
 
 if __name__ == "__main__":
@@ -136,6 +152,6 @@ if __name__ == "__main__":
     net = rdn(True, scale)
     data = Data(args.dataset, args.image_form, scale)
 
-    recover = Recover(net, data, scale, args)
+    recover = Trainer(net, data, scale, args)
     print("Start training...")
     recover.train()

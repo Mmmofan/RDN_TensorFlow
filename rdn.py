@@ -54,14 +54,14 @@ class rdn(object):
         self.weights['w{}'.format(D+8)] = tf.Variable(tf.random_normal([3, 3, c_dim, c_dim], stddev=np.sqrt(2/9/32)), name='w{}'.format(D+8))
         self.biases['b{}'.format(D+8)] = tf.Variable(tf.zeros([c_dim]), name='b{}'.format(D+8))
 
-    def build_net(self, input_size):
+    def build_net(self):
         """
         input_size: [image_size, image_size], the size of input image, for training is 32, for testing is arbitrarily
         """
         c_dim = self.c_dim
         scale = self.scale
-        self.input_ = tf.placeholder(tf.float32, [None, input_size[0], input_size[1], c_dim], name='input')       
-        self.label_ = tf.placeholder(tf.float32, [None, input_size[0]*scale, input_size[1]*scale, c_dim], name='label')
+        self.input_ = tf.placeholder(tf.float32, [None, None, None, c_dim], name='input')       
+        self.label_ = tf.placeholder(tf.float32, [None, None, None, c_dim], name='label')
         self.output = self.model(self.input_)
         if self.is_train:
             self.loss = self.loss_layer(self.output, self.label_)
@@ -118,7 +118,6 @@ class rdn(object):
 
     def PS(self, X, r):
         # Main OP that you can arbitrarily use in you tensorflow code
-        # 在feature maps维上，分成3个Tensor，每个的shape应该是(batch_size,H,W, self.scale * self.scale)
         Xc = tf.split(X, 3, 3)
         if self.is_train:
             X = tf.concat([self._phase_shift(x, r) for x in Xc], 3)  # Do the concat RGB
@@ -129,19 +128,10 @@ class rdn(object):
     # NOTE: train with batch size
     def _phase_shift(self, I, r):
         """
-        把最后一位放大的scale转到Height和weight上
-        :param I:
-        :param r:放大因子
-        :return:
+        I: []
         """
-        # Helper function with main phase shift operation
-        bsize, a, b, c = I.get_shape().as_list()
-        X = tf.reshape(I, (-1, a, b, r, r))
-        X = tf.split(X, a, 1)  # a, [bsize, b, r, r]
-        X = tf.concat([tf.squeeze(x) for x in X], 2)  # bsize, b, a*r, r
-        X = tf.split(X, b, 1)  # b, [bsize, a*r, r]
-        X = tf.concat([tf.squeeze(x) for x in X], 2)  # bsize, a*r, b*r
-        return tf.reshape(X, (-1, a * r, b * r, 1))
+        X = tf.depth_to_space(I, r)
+        return X
 
     # NOTE: test without batchsize
     def _phase_shift_test(self, I, r):
@@ -179,5 +169,5 @@ class rdn(object):
 if __name__ == "__main__":
     image_size = [32, 32]
     net = rdn(True, 2)
-    net.build_net(image_size)
+    net.build_net()
     print("Done")

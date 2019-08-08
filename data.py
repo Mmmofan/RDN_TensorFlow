@@ -82,6 +82,24 @@ class Data(object):
             make_data(input_seq, label_seq, self.dataset, self.scale)
         print("Make dataset done...")
 
+    def augument(self, random, input_, label_):
+        """
+        random: [rand1, rand2]
+        """
+        if random[0] < 0.3:
+            input_ = np.flip(input_, 1)
+            label_ = np.flip(label_, 1)
+        elif random[0] > 0.7:
+            input_ = np.flip(input_, 2)
+            label_ = np.flip(label_, 2)
+        else:
+            pass
+
+        if random[1] < 0.5:
+            input_ = np.rot90(input_, 1, [1, 2])
+            label_ = np.rot90(label_, 1, [1, 2])
+
+        return input_, label_
 
 def prepare_data(dataset, image_form):
     """
