@@ -73,28 +73,28 @@ class Trainer(object):
             self.data.train_setup()
 
         self.hf = h5py.File(self.cache_file, 'r')
-        data_len = len(hf['data'])
+        data_len = len(self.hf['data'])
         counter = 0
-        assert(len(hf['data']) == len(hf['label']))
+        assert(len(self.hf['data']) == len(self.hf['label']))
         steps = data_len // batch
         print("[{}] steps per epoch...".format(steps))
 
         for epo in range(epochs):
             for step in range(steps):
                 # random choose a batch
-                rand_batch = np.random.randint(data_len - 1)
-                input_, label_ = hf['data'][rand_batch * batch : (rand_batch+1) * batch], \
-                                 hf['label'][rand_batch * batch : (rand_batch+1) * batch]
+                rand_batch = np.random.randint(steps - 1)
+                input_, label_ = self.hf['data'][rand_batch * batch : rand_batch * batch + batch], \
+                                 self.hf['label'][rand_batch * batch : rand_batch * batch + batch]
                 # add data augumentation
                 random_aug = np.random.rand(2)
-                input_, label_ = self.data.augument(input_, label_)
+                input_, label_ = self.data.augument(random_aug, input_, label_)
                 feed_dict = {self.net.input_: input_, self.net.label_: label_, self.net.batch:batch}
                 _, err = self.sess.run([self.train_op, self.net.loss], feed_dict=feed_dict)
                 counter += 1
                 # print every 100 steps
                 if counter % 100 == 0:
                     print("Training step: [{:6}], time: [{:4.6f}min], loss: [{:.6f}]".format(\
-                        step+epo*steps, (time.time()-overall_time)/60, err))
+                        counter, (time.time()-overall_time)/60, err))
                 if counter % 200 == 0:
                     self.test(input_, label_, counter)
                 # save ckpt every 500 steps:
@@ -114,11 +114,9 @@ class Trainer(object):
 
             label_ycbcr = sc.rgb2ycbcr(label_)
             output_ycbcr = sc.rgb2ycbcr(output)
-            psnr, ssim = calculate_metrics(label_[i], output[i])
-            metrics.append(psnr)
-            metrics2.append(ssim)
-        avg_psnr = sum([m for m in metrics]) / len(metrics)
-        avg_ssim = sum([m for m in metrics2]) / len(metrics2)
+            metrics.append(calculate_metrics([label_[i]], [output[i]]))
+        avg_psnr = sum([m[0] for m in metrics]) / len(metrics)
+        avg_ssim = sum([m[1] for m in metrics]) / len(metrics)
         feed_dict={self.tf_loss_ph: loss, self.tf_psnr_ph: avg_psnr, self.tf_ssim_ph: avg_ssim}
         summ = self.sess.run(self.performance_summary, feed_dict=feed_dict)
         self.writer.add_summary(summ, step)
@@ -132,7 +130,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', default='DIV2K_train_HR', type=str)
     parser.add_argument('--image_form', default='.png', type=str)
-    parser.add_argument('--fresh', default=True, type=bool)
+    parser.add_argument('--fresh', default=False, type=bool)
+    parser.add_argument('--scale', default=2, type=int)
     parser.add_argument('--weight_file', default='rdn.ckpt', type=str)
     args = parser.parse_args()
 
@@ -147,8 +146,7 @@ if __name__ == "__main__":
                 os.remove(event)
         print("freshing complete")
     
-    scale = int(input('Input scale: ?\n'))
-    
+    scale = args.scale
     net = rdn(True, scale)
     data = Data(args.dataset, args.image_form, scale)
 
