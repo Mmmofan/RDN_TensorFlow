@@ -30,7 +30,7 @@ class Data(object):
                 data_list = self.data[gp * 50 : (gp+1) * 50]
                 input_seq, label_seq = [], []
                 for data in data_list:
-                    input_, label_ = preprocess(data, scale)
+                    input_, label_ = self.preprocess(data, scale)
                     (height, width, _) = input_.shape
                     x_range = (height - self.image_size) // stride
                     y_range = (width - self.image_size) // stride
@@ -58,7 +58,7 @@ class Data(object):
         else:
             input_seq, label_seq = [], []
             for data in self.data:
-                input_, label_ = preprocess(data, scale)
+                input_, label_ = self.preprocess(data, scale)
                 (height, width, _) = input_.shape
                 x_range = (height - self.image_size) // stride
                 y_range = (width - self.image_size) // stride
@@ -101,6 +101,21 @@ class Data(object):
 
         return input_, label_
 
+    def preprocess(self, path, scale):
+        """
+        Read image and make a pair of input and label
+        """
+        image = Image.open(path).convert('RGB')
+        (width, height) = image.size
+        label_ = np.array(list(image.getdata())).astype(np.float32).reshape((height, width, -1)) / 255
+
+        new_height, new_width = int(height / scale), int(width / scale)
+        scaled_img = image.resize((new_width, new_height), Image.ANTIALIAS)
+        input_ = np.array(list(scaled_img.getdata())).astype(np.float32).reshape((new_height, new_width, -1)) / 255
+        image.close()
+
+        return input_, label_
+
 def prepare_data(dataset, image_form):
     """
     Args:
@@ -111,21 +126,6 @@ def prepare_data(dataset, image_form):
         raise Exception("No such dataset")
     data_files = glob.glob(os.path.join(dataset, '*'+image_form))
     return data_files
-
-def preprocess(path, scale):
-    """
-    Read image and make a pair of input and label
-    """
-    image = Image.open(path).convert('RGB')
-    (width, height) = image.size
-    label_ = np.array(list(image.getdata())).astype(np.float32).reshape((height, width, -1)) / 255
-
-    new_height, new_width = int(height / scale), int(width / scale)
-    scaled_img = image.resize((new_width, new_height), Image.ANTIALIAS)
-    input_ = np.array(list(scaled_img.getdata())).astype(np.float32).reshape((new_height, new_width, -1)) / 255
-    image.close()
-
-    return input_, label_
 
 def make_data(data, label, dataset, scale):
     """

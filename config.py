@@ -19,3 +19,4 @@ WEIGHTS_DIR = 'weights'
 CACHE_DIR = 'cache'
 EVENT_DIR = os.path.join(CACHE_DIR, 'event')
 DATA_DIR = 'data'
+OUT_DIR = 'output'
