@@ -21,10 +21,11 @@ class Trainer(object):
         self.batch = cfg.BATCH
         self.hf = None
 
+        # parameters for training
         self.global_step = tf.Variable(0, trainable=False, name='global_step')
         self.learning_rate = tf.train.exponential_decay(cfg.L_R, 
                             global_step=self.global_step, decay_steps=200000, decay_rate=0.5, staircase=True)
-
+        # saver and some paths
         variables_to_save = tf.global_variables()
         variables_to_restore = tf.global_variables()
         self.saver = tf.train.Saver(variables_to_save, max_to_keep=2)
@@ -36,12 +37,13 @@ class Trainer(object):
         self.bestWeight = os.path.join(os.path.join(cfg.WEIGHTS_DIR, 'best'), 'rdn_best')
         self.cache_file = os.path.join(self.cache_dir, self.cache_name)
 
-        # build rdn net
+        # build rdn net and train operation
         self.net.build_net()
         self.optimizer = tf.train.AdamOptimizer(self.learning_rate)
         self.gradients = self.optimizer.compute_gradients(self.net.loss, tf.trainable_variables())
         self.train_op = self.optimizer.minimize(self.net.loss, global_step=self.global_step)
 
+        # add scalars which can be showed on TensorBoard
         with tf.name_scope('performance'):
             self.tf_loss_ph = tf.placeholder(tf.float32, [], name='loss_ph')
             self.tf_psnr_ph = tf.placeholder(tf.float32, [], name='psnr_ph')
@@ -58,6 +60,7 @@ class Trainer(object):
             tf_grads_summary = tf.summary.scalar('grads_norm', self.last_grads_norm)
         self.grads_and_lr = tf.summary.merge([tf_grads_summary, tf_lr_summary])
 
+        # add other preparation
         config = tf.ConfigProto(allow_soft_placement=True)
         config.gpu_options.allow_growth = True
         config.gpu_options.per_process_gpu_memory_fraction = 0.8
@@ -69,19 +72,24 @@ class Trainer(object):
             self.restorer.restore(self.sess, self.weight_file)
 
     def train(self):
+        # param for training
         epochs = self.epochs
         batch  = self.batch
         overall_time = time.time()
         if not os.path.exists(self.cache_file):
             self.data.train_setup()
-
+        # training data
         self.hf = h5py.File(self.cache_file, 'r')
         data_len = len(self.hf['data'])
         counter = 0
         best_psnr = 0
         assert(len(self.hf['data']) == len(self.hf['label']))
         print("Run [1000] steps per epoch...")
-
+        # testing data
+        data_dir = os.path.join('data', os.path.join('Set5', 'image_SRF_{}'.format(scale)))
+        lr_list = glob.glob(os.path.join(data_dir, '*_LR.png'))
+        hr_list = glob.glob(os.path.join(data_dir, '*_HR.png'))
+        # start training
         for epo in range(epochs):
             for step in range(1000):
                 # random choose a batch
@@ -100,7 +108,7 @@ class Trainer(object):
                         counter, (time.time()-overall_time)/60, err))
                 # test on Set5 every 200 steps
                 if counter % 200 == 0:
-                    cur_psnr = self.test(input_, label_, counter)
+                    cur_psnr = self.test_on_Set5(err, counter, lr_list, hr_list)
                     if cur_psnr > best_psnr:
                         best_psnr = cur_psnr
                         self.bestSaver.save(self.sess, self.bestWeight)
@@ -109,14 +117,12 @@ class Trainer(object):
                     gn_summ = self.sess.run(self.grads_and_lr, feed_dict={self.net.input_: input_, self.net.label_: label_})
                     self.writer.add_summary(gn_summ, counter)
                     self.saver.save(self.sess, self.weight_file, global_step=self.global_step)
-            print("===================Epoch: [{:3}]===================".format(epo))
+            print("===================Epoch: [{:3}]===================".format(epo+1))
         print("Done...")
 
-    def test(self, input_, label_, step):
+    def test_on_Set5(self, loss, step, lr_list, hr_list):
         scale = self.scale
-        data_dir = os.path.join('data', os.path.join('Set5', 'image_SRF_{}'.format(scale)))
-        lr_list = glob.glob(os.path.join(data_dir, '*_LR.png'))
-        hr_list = glob.glob(os.path.join(data_dir, '*_HR.png'))
+        assert(len(lr_list)==len(hr_list))
 
         metrics = []
         for idx in range(len(hr_list)):
@@ -136,7 +142,7 @@ class Trainer(object):
 
             label_ycbcr = sc.rgb2ycbcr(hr_img)
             output_ycbcr = sc.rgb2ycbcr(output)
-            metrics.append(calculate_metrics([label_ycbcr[0]], [output_ycbcr[0]]))
+            metrics.append(calculate_metrics([label_ycbcr[:, :, 0:1]], [output_ycbcr[:, :, 0:1]]))
             lr_img.close()
             hr_img.close()
         avg_psnr = sum([m[0] for m in metrics]) / len(metrics)
@@ -147,8 +153,10 @@ class Trainer(object):
         return avg_psnr
 
     def __del__(self):
-        self.sess.close()
-        self.hf.close()
+        if self.sess:
+            self.sess.close()
+        if self.hf:
+            self.hf.close()
 
 
 if __name__ == "__main__":
@@ -160,6 +168,7 @@ if __name__ == "__main__":
     parser.add_argument('--weight_file', default='rdn.ckpt', type=str)
     args = parser.parse_args()
 
+    # check status
     if args.scale == 0:
         raise Exception('Wrong scale\nUse --scale to specify the scale')
     if args.fresh:

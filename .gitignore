@@ -8,5 +8,8 @@ checkpoint
 *.ckpt*
 *.ini
 *.h5
+*.data-00000-of-00001
+*.meta
+*.index
 
 events.*
