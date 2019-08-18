@@ -5,8 +5,6 @@ import scipy.misc
 import skimage
 from skimage import measure
 
-scale = 2
-
 def calculate_metrics(hr_y_list, sr_y_list, bnd=2):
     class BaseMetric:
         def __init__(self):

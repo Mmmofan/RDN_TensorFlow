@@ -135,13 +135,8 @@ class rdn(object):
 
     # NOTE: test without batchsize
     def _phase_shift_test(self, I, r):
-        bsize, a, b, c = I.get_shape().as_list()
-        X = tf.reshape(I, (1, a, b, r, r))
-        X = tf.split(X, a, 1)  # a, [bsize, b, r, r]
-        X = tf.concat([tf.squeeze(x) for x in X], 1)  # bsize, b, a*r, r
-        X = tf.split(X, b, 0)  # b, [bsize, a*r, r]
-        X = tf.concat([tf.squeeze(x) for x in X], 1)  # bsize, a*r, b*r
-        return tf.reshape(X, (1, a * r, b * r, 1))
+        X = tf.depth_to_space(I, r)
+        return X
 
 
     def conv_layer(self, input_tensor, weight, bias, activation, name):
@@ -162,6 +157,9 @@ class rdn(object):
         return out
 
     def loss_layer(self, output, label):
+        '''
+        Use L1 loss
+        '''
         diff = tf.abs(output - label)
         loss = tf.reduce_mean(diff)
         return loss
