@@ -23,12 +23,12 @@ class Trainer(object):
 
         # parameters for training
         self.global_step = tf.Variable(0, trainable=False, name='global_step')
-        self.learning_rate = tf.train.exponential_decay(cfg.L_R, 
+        self.learning_rate = tf.train.exponential_decay(cfg.L_R/2, 
                             global_step=self.global_step, decay_steps=200000, decay_rate=0.5, staircase=True)
         # saver and some paths
         variables_to_save = tf.global_variables()
         variables_to_restore = tf.global_variables()
-        self.saver = tf.train.Saver(variables_to_save, max_to_keep=2)
+        self.saver = tf.train.Saver(variables_to_save, max_to_keep=1)
         self.bestSaver = tf.train.Saver(variables_to_save, max_to_keep=1)
         self.cache_name = args.dataset + '_train_X{}.h5'.format(self.scale)
         self.cache_dir = cfg.CACHE_DIR
@@ -68,7 +68,7 @@ class Trainer(object):
         self.writer = tf.summary.FileWriter(self.event_dir, self.sess.graph)
         self.sess.run(tf.global_variables_initializer())
         if not args.fresh:
-            self.restorer = tf.train.Saver(variables_to_restore, max_to_keep=2)
+            self.restorer = tf.train.Saver(variables_to_restore, max_to_keep=1)
             self.restorer.restore(self.sess, self.weight_file)
 
     def train(self):
@@ -82,7 +82,7 @@ class Trainer(object):
         self.hf = h5py.File(self.cache_file, 'r')
         data_len = len(self.hf['data'])
         counter = 0
-        best_psnr = 0
+        best_psnr = 36.35
         assert(len(self.hf['data']) == len(self.hf['label']))
         print("Run [1000] steps per epoch...")
         # testing data

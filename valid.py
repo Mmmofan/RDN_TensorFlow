@@ -33,8 +33,8 @@ class Restorer(object):
         self.restorer.restore(self.sess, self.weight_file)
 
     def valid(self):
-        data_files = glob.glob(os.path.join(self.data_file_path, '*_HR{}'.format(self.args.image_form)))
         scale = self.scale
+        data_files = glob.glob(os.path.join(self.data_file_path+ os.sep + 'image_SRF_{}'.format(scale), '*_HR{}'.format(self.args.image_form)))
 
         metrics_1, metrics_2 = [], []
         for data in range(len(data_files)):
@@ -87,7 +87,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', default='Set5', type=str)
     parser.add_argument('--image_form', default='.png', type=str)
-    parser.add_argument('--weight_file', default='rdn.ckpt-500', type=str)
+    parser.add_argument('--weight_file', default='rdn.ckpt', type=str)
     parser.add_argument('--save', default=False, type=bool)
     parser.add_argument('--eval', default=True, type=bool)
     args = parser.parse_args()

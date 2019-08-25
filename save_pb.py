@@ -6,13 +6,13 @@ from tensorflow.python.framework import graph_util
 from rdn import rdn
 
 def make_pb(scale, pb_file):
-    rdn = rdn(False, scale)
-    rdn.build_net()
+    net = rdn(False, scale)
+    net.build_net()
     variables_to_restore = tf.global_variables()
     saver = tf.train.Saver(variables_to_restore)
     sess = tf.Session()
     ckpt_path = 'weights'
-    ckpt_file = os.path.join(ckpt_path, 'rdn.ckpt')
+    ckpt_file = os.path.join(ckpt_path, 'rdn.ckpt-200000')
 
     init = tf.global_variables_initializer()
     sess.run(init)
@@ -20,7 +20,7 @@ def make_pb(scale, pb_file):
     ckpt = tf.train.get_checkpoint_state(ckpt_path)
     if ckpt and ckpt.model_checkpoint_path:
         saver.restore(sess, ckpt.model_checkpoint_path)
-    constant_graph = graph_util.convert_variables_to_constants(sess, sess.graph_def, ['input', 'add_168'])
+    constant_graph = graph_util.convert_variables_to_constants(sess, sess.graph_def, ['add_147'])
     with tf.gfile.FastGFile(pb_file, mode='wb') as f:
         f.write(constant_graph.SerializeToString())
 
