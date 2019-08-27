@@ -1,9 +1,14 @@
-# Residual Dense Network for Image Super-Resolution
-TensorFlow implementatoin of Residual Dense Network for Image Super-Resolution, paper click [here](https://arxiv.org/abs/1802.08797)
+# Residual Dense Network for Image Super-resolution
+Implementation of [RDN](https://arxiv.org/abs/1802.08797) in TensorFlow 1.8.0
 
-References: [Author's version](https://github.com/yulunzhang/RDN), [PyTorch version](https://github.com/lingtengqiu/RDN-pytorch), [Another tensorflow](https://github.com/hengchuan/RDN-TensorFlow/blob/master/README.md)
+## Where is the code?
+I move the code to branch: **dev**, clone the repo and type:
+```shell
+git checkout dev
+```
+and then ou will see the Python files
 
-I have to admmit, I didn't get the result as good as the author said in paper(about 1dB PSNR low), hope someone can get that.
+There is still a README, hope it can give you some help.
 
 ## Requirements
 make sure you have these lib below:
@@ -17,41 +22,10 @@ make sure you have these lib below:
  - scikit-learn==0.21.3
  - scipy==1.1.0
 
-## Train
-To train the model, put you training set in *./data*, for example, to train on DIV2K_train_HR, put folder *DIV2K_train_HR* in folder *data*.
-
-For first training, type:
-```shell
-python train.py --dataset DIV2K_train_HR --image_form .png --fresh True --scale 2
-```
-For fine-tune, type:
-```shell
-python train.py --dataset DIV2K_train_HR --image_form .png --weight_file rdn.ckpt-100000
-```
-*--dataset* indicate which dataset you gonna use, *--image_for* indicate what type of images in this dataset, *--fresh* means it's trianing from scratch, **DO NOT** type *--fresh* if you are in fune-tune stage, and *--weight_file* indicate ckpt files you gonna restore and continue to train.
-
-in Training, you will see:
-```shell
-Training step: [   100], time: [0.174093min], loss: [1.412353]
-Training step: [   200], time: [0.256196min], loss: [0.987543]
-...
-```
-then you on training.
-
-When trainig, you can open **TensorBoard** to see the metrics, type:
-```shell
-cd ~/RDN-TensorFlow
-tensorboard --logdir=cache/event
-```
-Then open the website showed on screen
-
-## Test
-After training, type:
-```shell
-python valid.py --dataset Set5 --image_form .png --weight_file rdn.ckpt-200000 --save true
-```
-and you will see the output...
-
 ---
 
 Any questions, email: cokespace2@gmail.com
+
+Have fun!
+
+--Fan, 08/10/2019
